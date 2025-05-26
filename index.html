@@ -46,7 +46,7 @@
     #setupScreen h2 { text-align: center; margin-bottom: 20px; }
     /* Schermata di Gioco */
     #gameScreen { display: none; margin: 20px auto; }
-    /* Canvas: griglia 15×15 (600×600 px, cella 40×40) */
+    /* Il canvas occupa 600x600 px (griglia 15×15, cella 40×40) */
     #boardCanvas {
       background: #fff;
       border: 2px solid #333;
@@ -107,8 +107,8 @@
       <div class="col-lg-4">
         <div id="controlPanel" class="card shadow p-3">
           <h5 id="turnIndicator">Turno: </h5>
-          <button id="rollDiceBtn" class="btn btn-success">Tira Dadi</button>
-          <p id="diceResult" class="fs-4 mt-2"></p>
+          <button id="rollDiceBtn" class="btn btn-success mb-2">Tira Dadi</button>
+          <p id="diceResult" class="fs-4"></p>
           <button id="nextTurnBtn" class="btn btn-secondary mt-2" style="display:none;">Passa Turno</button>
           <div class="mt-3">
             <button id="instructionsBtn" class="btn btn-info btn-sm">Istruzioni</button>
@@ -131,8 +131,8 @@
           <p>
             • Ogni giocatore ha 4 gettoni che inizialmente risiedono nella propria area base.<br><br>
             • Per uscire dalla base serve ottenere un 6: se esce 6, il gettone passa sul percorso.<br><br>
-            • I gettoni si spostano lungo il percorso comune (52 caselle) e poi nelle proprie finishing lanes (6 caselle) fino al centro.<br><br>
-            • Se un gettone atterra sulla stessa casella di un avversario (eccetto le caselle “sicure”, ovvero gli spazi d’uscita) il gettone avversario torna in base.<br><br>
+            • I gettoni si spostano lungo il percorso comune (52 caselle) e poi nelle finishing lanes (6 caselle) fino al centro.<br><br>
+            • Se un gettone atterra sulla stessa casella di un avversario (eccetto le caselle sicure, ovvero gli spazi d’uscita) il gettone avversario torna in base.<br><br>
             • Se si lancia il 6 si ottiene un turno extra.<br><br>
             • La partita termina quando un giocatore porta tutti i suoi gettoni al centro.
           </p>
@@ -192,7 +192,7 @@
     // Ordine fisso dei giocatori
     const playerOrder = ["red", "blue", "yellow", "green"];
 
-    // Coordinate delle aree base per ciascun colore (posizionate in una mini-griglia 2×2)
+    // Coordinate delle aree base (le "caselle casa") su griglia (ciascuna area in una mini-griglia 2×2)
     const basePositions = {
       red: [ {row:2, col:2}, {row:2, col:4}, {row:4, col:2}, {row:4, col:4} ],
       blue: [ {row:2, col:10}, {row:2, col:12}, {row:4, col:10}, {row:4, col:12} ],
@@ -200,7 +200,7 @@
       green: [ {row:10, col:10}, {row:10, col:12}, {row:12, col:10}, {row:12, col:12} ]
     };
 
-    // Mappa del percorso comune: 52 caselle definite in coordinate della griglia
+    // Mappa del percorso comune: 52 caselle in coordinate della griglia
     const pathCoordinates = [
       {r:6,  c:0}, {r:6,  c:1}, {r:6,  c:2}, {r:6,  c:3}, {r:6,  c:4}, {r:6,  c:5},
       {r:5,  c:6}, {r:4,  c:6}, {r:3,  c:6}, {r:2,  c:6}, {r:1,  c:6}, {r:0,  c:6},
@@ -213,15 +213,15 @@
       {r:8,  c:2}, {r:8,  c:1}, {r:8,  c:0}, {r:7,  c:0}
     ];
 
-    // Indici di partenza per ciascun giocatore (dove il gettone entra sul percorso)
+    // Start per ciascun giocatore: dove il gettone entra sul percorso
     const startIndexes = {
       red: 0,      // Red parte da (6,0)
-      blue: 13,    // Blue da (0,8)
-      yellow: 26,  // Yellow da (8,14)
-      green: 39    // Green da (14,6)
+      blue: 13,    // Blue parte da (0,8)
+      yellow: 26,  // Yellow parte da (8,14)
+      green: 39    // Green parte da (14,6)
     };
 
-    // Finishing lanes: 6 caselle per ciascun colore, disposte per condurre al centro (cella (7,7))
+    // Finishing lanes: 6 caselle per ciascun colore che conducono al centro (cella (7,7))
     const finishingLanes = {
       red:    [ {r:7, c:1}, {r:7, c:2}, {r:7, c:3}, {r:7, c:4}, {r:7, c:5}, {r:7, c:6} ],
       blue:   [ {r:1, c:7}, {r:2, c:7}, {r:3, c:7}, {r:4, c:7}, {r:5, c:7}, {r:6, c:7} ],
@@ -239,10 +239,15 @@
       diceRolled: false,   // flag se il dado è stato tirato
       awaitingMove: false, // flag per attendere la scelta del gettone (per umani)
       gameStarted: false,
-      running: false       // per bloccare gli input durante animazioni
+      running: false       // blocca gli input durante l'animazione
     };
-    // Ogni giocatore verrà rappresentato come:
+    // Ogni giocatore sarà strutturato come:
     // { id, name, color, type ("human" o "bot"), startIndex, base (array di 4 coordinate), tokens: [ {progress: -1} o valore da 0 a 57 ] }
+
+    /**********************************************************
+     * VARIABILE PER TIMEOUT DEL TURNO UMANO (15 sec)
+     **********************************************************/
+    let humanMoveTimeout = null;
 
     /**********************************************************
      * SETUP DELLA PARTITA – SCHERMATA DI CONFIGURAZIONE
@@ -252,7 +257,6 @@
     const playerSettingsDiv = document.getElementById("playerSettings");
     const gameScreen = document.getElementById("gameScreen");
 
-    // Al cambiamento del numero di giocatori, mostra i campi per il tipo di ciascun giocatore
     document.getElementById("numPlayers").addEventListener("change", function(){
       let num = parseInt(this.value);
       playerSettingsDiv.innerHTML = "";
@@ -269,7 +273,6 @@
       }
     });
 
-    // Quando viene inviato il form, crea l'array dei giocatori e avvia la partita
     setupForm.addEventListener("submit", function(e){
       e.preventDefault();
       const numPlayers = parseInt(document.getElementById("numPlayers").value);
@@ -293,6 +296,7 @@
       gameScreen.style.display = "block";
       updateTurnDisplay();
       addMessage("Partita avviata!");
+      // Se il primo giocatore è Bot, avvia il turno Bot
       if(currentPlayer().type === "bot"){
         setTimeout(botTurn, 1000);
       }
@@ -302,10 +306,12 @@
     function currentPlayer(){
       return game.players[game.currentTurn];
     }
+
     function updateTurnDisplay(){
       document.getElementById("turnIndicator").textContent =
          "Turno: " + currentPlayer().name + " (" + currentPlayer().type + ")";
     }
+
     function addMessage(msg){
       const mp = document.getElementById("messagePanel");
       mp.innerHTML += `<div>${msg}</div>`;
@@ -338,6 +344,7 @@
     }
 
     rollDiceBtn.addEventListener("click", function(){
+      // Per giocatori umani, se non è già stato tirato il dado e se il gioco non è in animazione
       if(!game.diceRolled && currentPlayer().type === "human" && !game.running){
         rollDice();
         let moves = validTokens(currentPlayer());
@@ -348,14 +355,23 @@
         } else {
           game.awaitingMove = true;
           addMessage("Scegli un gettone per muoverlo.");
+          // Se il giocatore non muove entro 15 secondi, salta il turno
+          humanMoveTimeout = setTimeout(() => {
+            if(game.awaitingMove && currentPlayer().type === "human"){
+              addMessage("Tempo scaduto, turno saltato.");
+              endTurn();
+            }
+          }, 15000);
         }
       }
     });
 
-    // Quando un gettone viene selezionato (clic sul token in area valida)
+    // Funzione per muovere il gettone selezionato; uso del flag game.running per bloccare input multipli
     function moveToken(player, tokenIndex){
+      if(game.running) return;
+      game.running = true;
+      // Se il gettone è in base ed il dado è 6
       let token = player.tokens[tokenIndex];
-      // Se il gettone è in base e il dado è 6, lo fa uscire
       if(token.progress === -1 && game.dice === 6){
         token.progress = 0;
         addMessage(player.name + " esce dalla base.");
@@ -363,7 +379,7 @@
         token.progress += game.dice;
         addMessage(player.name + " muove il gettone " + (tokenIndex+1) + " di " + game.dice + " caselle.");
       }
-      // Verifica la cattura: solo se il gettone è sul percorso comune (progress da 0 a 51)
+      // Se è sul percorso comune, verifica se atterra sopra un avversario (e non è in casella sicura)
       if(token.progress >= 0 && token.progress < 52){
         let pos = getMainTrackCoord(player, token.progress);
         game.players.forEach(p => {
@@ -371,7 +387,7 @@
             p.tokens.forEach(t => {
               if(t.progress >= 0 && t.progress < 52){
                 let oppPos = getMainTrackCoord(p, t.progress);
-                if(oppPos.r === pos.r && oppPos.c === pos.c && !isSafeCell( (p.startIndex + t.progress) % 52 )){
+                if(oppPos.r === pos.r && oppPos.c === pos.c && !isSafeCell((p.startIndex + t.progress) % 52)){
                   t.progress = -1;
                   addMessage(player.name + " cattura un gettone di " + p.name + "!");
                 }
@@ -380,19 +396,25 @@
           }
         });
       }
+
+      // Se era turno extra (dado 6), mantiene lo stesso giocatore, altrimenti passa turno
       game.awaitingMove = false;
-      // Se il dado è diverso da 6, passa turno; altrimenti, turno extra (lo stesso giocatore)
+      if(currentPlayer().type === "human") {
+        clearTimeout(humanMoveTimeout);
+      }
       if(game.dice !== 6){
         nextTurn();
       } else {
+        // Turno extra: reset dice per permettere un nuovo tiro
         game.diceRolled = false;
         diceResultEl.textContent = "Dado: (6) - Turno extra.";
         addMessage(player.name + " ha ottenuto un turno extra.");
-        // Se il giocatore è Bot, attiva automaticamente botTurn
+        // Se il giocatore è Bot, lancia automaticamente
         if(player.type === "bot"){
           setTimeout(botTurn, 1000);
         }
       }
+      game.running = false;
       checkVictory(player);
     }
 
@@ -400,13 +422,13 @@
       game.diceRolled = false;
       nextTurn();
     }
+
     function nextTurn(){
       game.currentTurn = (game.currentTurn + 1) % game.players.length;
       game.dice = 0;
       diceResultEl.textContent = "";
       updateTurnDisplay();
       addMessage("Ora tocca a " + currentPlayer().name + ".");
-      // Se il nuovo turno è di un Bot, attiva botTurn dopo un breve delay
       if(currentPlayer().type === "bot"){
         setTimeout(botTurn, 1000);
       }
@@ -417,7 +439,7 @@
      **********************************************************/
     function botTurn(){
       if(currentPlayer().type !== "bot") return;
-      console.log("Turno Bot per:", currentPlayer().name);
+      console.log("BotTurn per:", currentPlayer().name);
       if(!game.diceRolled){
         rollDice();
         setTimeout(botTurn, 600);
@@ -434,39 +456,39 @@
       setTimeout(() => {
         moveToken(currentPlayer(), choice);
         drawGame();
-        // Se, dopo la mossa, il dado era 6 (turno extra), il Bot continua
+        // Se il dado era 6 per il Bot, continua automaticamente
         if(currentPlayer().type === "bot" && game.diceRolled){
           setTimeout(botTurn, 1000);
         }
       }, 1000);
     }
 
-    // Le caselle "sicure" sono quelle negli indici 0, 13, 26, 39 del percorso comune
+    // Le caselle sicure sono quelle con indici 0, 13, 26, 39 sul percorso comune
     function isSafeCell(index){
       return [0, 13, 26, 39].includes(index);
     }
 
     /**********************************************************
-     * CALCOLO DELLE COORDINATE PER IL DISEGNO
+     * CALCOLO DELLE COORDINATE PER IL DISEGNO DEL BOARD
      **********************************************************/
-    // Converte coordinate di griglia {r, c} al centro della cella in pixel
+    // Converte coordinate di griglia {r, c} al centro della cella (in pixel)
     function gridToPixel(coord){
       return {
         x: coord.c * cellSize + cellSize/2,
         y: coord.r * cellSize + cellSize/2
       };
     }
-    // Per un gettone sul percorso comune: restituisce la cella corrispondente
+    // Per un gettone sul percorso comune: la cella da usare è pathCoordinates[(player.startIndex + token.progress) mod 52]
     function getMainTrackCoord(player, progress){
       let idx = (player.startIndex + progress) % 52;
       return { r: pathCoordinates[idx].r, c: pathCoordinates[idx].c };
     }
-    // Per il gettone nelle finishing lanes (progress da 52 a 56)
+    // Per i token nelle finishing lanes (progress da 52 a 56)
     function getFinishingCoord(player, progress){
       let lane = finishingLanes[player.color];
       return lane[progress - 52];
     }
-    // Se progress è 57, la posizione del gettone è il centro (cella (7,7))
+    // Se progress è 57, la posizione è il centro (cella (7,7))
     function getFinishedCoord(){
       return { r: 7, c: 7 };
     }
@@ -476,7 +498,7 @@
      **********************************************************/
     function drawBoard(){
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // Disegna la griglia 15×15
+      // Griglia 15x15
       for(let i = 0; i <= 15; i++){
         // Linee orizzontali
         ctx.beginPath();
@@ -491,24 +513,24 @@
         ctx.strokeStyle = "#bbb";
         ctx.stroke();
       }
-      // Colora le aree base per ciascun giocatore
-      // Rosso in alto a sinistra
+      // Colori delle aree base
+      // Rosso – in alto a sinistra
       ctx.fillStyle = "#ffcccc";
-      ctx.fillRect(0, 0, cellSize*6, cellSize*6);
-      // Blu in alto a destra
+      ctx.fillRect(0, 0, cellSize * 6, cellSize * 6);
+      // Blu – in alto a destra
       ctx.fillStyle = "#ccccff";
-      ctx.fillRect(cellSize*9, 0, cellSize*6, cellSize*6);
-      // Giallo in basso a sinistra
+      ctx.fillRect(cellSize * 9, 0, cellSize * 6, cellSize * 6);
+      // Giallo – in basso a sinistra
       ctx.fillStyle = "#ffffcc";
-      ctx.fillRect(0, cellSize*9, cellSize*6, cellSize*6);
-      // Verde in basso a destra
+      ctx.fillRect(0, cellSize * 9, cellSize * 6, cellSize * 6);
+      // Verde – in basso a destra
       ctx.fillStyle = "#ccffcc";
-      ctx.fillRect(cellSize*9, cellSize*9, cellSize*6, cellSize*6);
-      // Centro: area finale (celle centrali, da 6 a 8 per riga e colonna)
+      ctx.fillRect(cellSize * 9, cellSize * 9, cellSize * 6, cellSize * 6);
+      // Centro – area finale: celle centrali da 6 a 8
       ctx.fillStyle = "#eee";
-      ctx.fillRect(cellSize*6, cellSize*6, cellSize*3, cellSize*3);
+      ctx.fillRect(cellSize * 6, cellSize * 6, cellSize * 3, cellSize * 3);
 
-      // Disegna il percorso comune: per ogni casella in pathCoordinates
+      // Disegna il percorso comune
       for(let i = 0; i < pathCoordinates.length; i++){
         let cell = pathCoordinates[i];
         let x = cell.c * cellSize;
@@ -517,7 +539,6 @@
         ctx.fillRect(x, y, cellSize, cellSize);
         ctx.strokeStyle = "#333";
         ctx.strokeRect(x, y, cellSize, cellSize);
-        // Se la casella è sicura, disegna un cerchietto indicatore
         if(isSafeCell(i)){
           let center = { x: x + cellSize/2, y: y + cellSize/2 };
           ctx.beginPath();
@@ -528,26 +549,27 @@
           ctx.stroke();
         }
       }
+
       // Disegna le finishing lanes per ciascun giocatore
-      // Rosso: finishing lane lungo la fila 7, colonne da 1 a 6
+      // Rosso: finishing lane lungo la fila 7, colonne 1..6
       ctx.fillStyle = "rgba(255, 0, 0, 0.2)";
       finishingLanes.red.forEach(cell => {
         ctx.fillRect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
         ctx.strokeRect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
       });
-      // Blu: finishing lane lungo la colonna 7, righe da 1 a 6
+      // Blu: finishing lane lungo la colonna 7, righe 1..6
       ctx.fillStyle = "rgba(0, 0, 255, 0.2)";
       finishingLanes.blue.forEach(cell => {
         ctx.fillRect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
         ctx.strokeRect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
       });
-      // Giallo: finishing lane lungo la fila 7, colonne da 8 a 13
+      // Giallo: finishing lane lungo la fila 7, colonne 8..13
       ctx.fillStyle = "rgba(255, 255, 0, 0.2)";
       finishingLanes.yellow.forEach(cell => {
         ctx.fillRect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
         ctx.strokeRect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
       });
-      // Verde: finishing lane lungo la colonna 7, righe da 8 a 13
+      // Verde: finishing lane lungo la colonna 7, righe 8..13
       ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
       finishingLanes.green.forEach(cell => {
         ctx.fillRect(cell.c * cellSize, cell.r * cellSize, cellSize, cellSize);
@@ -571,14 +593,13 @@
           } else if(token.progress === 57){
             pos = gridToPixel({r:7, c:7});
           }
-          // Disegna il gettone come cerchio
           ctx.beginPath();
           ctx.arc(pos.x, pos.y, 15, 0, 2 * Math.PI);
           ctx.fillStyle = playerColors[player.color];
           ctx.fill();
           ctx.strokeStyle = "#000";
           ctx.stroke();
-          // Se è il turno del giocatore umano e il gettone è muovibile, evidenzia con bordo giallo
+          // Evidenzia il gettone se è muovibile (solo per giocatori umani)
           if(player.id === currentPlayer().id && game.awaitingMove && validTokens(player).includes(idx)){
             ctx.save();
             ctx.beginPath();
@@ -588,7 +609,7 @@
             ctx.stroke();
             ctx.restore();
           }
-          // Disegna l'indice (numero) sul gettone
+          // Disegna il numero identificativo sul gettone
           ctx.fillStyle = "#fff";
           ctx.font = "bold 12px Roboto";
           ctx.textAlign = "center";
@@ -629,7 +650,7 @@
         else if(token.progress === 57) pos = gridToPixel({r:7, c:7});
         let dx = clickX - pos.x;
         let dy = clickY - pos.y;
-        if(Math.sqrt(dx * dx + dy * dy) < 20){
+        if(Math.sqrt(dx*dx + dy*dy) < 20){
           moveToken(currentPlayer(), idx);
           drawGame();
         }
@@ -661,8 +682,7 @@
     });
     function endTurn(){
       game.diceRolled = false;
-      checkVictory(currentPlayer());
-      if(game.dice !== 6) nextTurn();
+      nextTurn();
     }
     function nextTurn(){
       game.currentTurn = (game.currentTurn + 1) % game.players.length;
@@ -697,12 +717,47 @@
       setTimeout(() => {
         moveToken(currentPlayer(), choice);
         drawGame();
-        // Se il dado era 6 e il Bot mantiene il turno, richiamalo
         if(currentPlayer().type === "bot" && game.diceRolled){
           setTimeout(botTurn, 1000);
         }
       }, 1000);
     }
+    
+    /**********************************************************
+     * BONUS: Timeout per il turno dei giocatori umani (15 sec)
+     **********************************************************/
+    // Se il giocatore umano non muove entro 15 secondi, il turno viene saltato.
+    function setHumanTimeout(){
+      if(currentPlayer().type === "human"){
+        humanMoveTimeout = setTimeout(() => {
+          if(game.awaitingMove && currentPlayer().type === "human"){
+            addMessage("Tempo scaduto, turno saltato.");
+            endTurn();
+          }
+        },15000);
+      }
+    }
+
+    // Richiama setHumanTimeout ogni volta che un giocatore umano inizia il turno (in rollDiceBtn)
+    rollDiceBtn.addEventListener("click", function(){
+      // Se è il turno di un giocatore umano, dopo aver tirato il dado, se ci sono mosse possibili, impostiamo il timeout
+      if(currentPlayer().type === "human" && game.diceRolled){
+        let moves = validTokens(currentPlayer());
+        if(moves.length > 0){
+          game.awaitingMove = true;
+          setHumanTimeout();
+        }
+      }
+    });
+
+    /**********************************************************
+     * CICLO DI DISEGNO (GAME LOOP)
+     **********************************************************/
+    function gameLoop(){
+      drawGame();
+      requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
   </script>
 </body>
 </html>
